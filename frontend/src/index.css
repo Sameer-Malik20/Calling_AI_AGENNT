@@ -1,0 +1,134 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #2563eb;
+  --color-secondary: #4f46e5;
+  --color-dark: #0f172a;
+  --color-light: #f8fafc;
+}
+
+:root {
+  --primary: #2563eb;
+  --secondary: #4f46e5;
+  --dark: #0f172a;
+  --light: #f8fafc;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+body {
+  @apply bg-[#F8FAFC] text-slate-900 font-sans antialiased;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  overflow-x: hidden;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: 'Outfit', sans-serif;
+}
+
+/* Custom Scrollbar for a premium feel */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #E2E8F0;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #CBD5E1;
+}
+
+/* Remove default dark styles to prevent white-on-white */
+.card {
+  background-color: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 32px;
+  padding: 2rem;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.02);
+}
+
+.btn-primary {
+  @apply bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 px-6 rounded-2xl transition-all duration-300 transform active:scale-95 shadow-lg shadow-blue-200/50 flex items-center justify-center gap-2;
+}
+
+.input-field {
+  @apply bg-white border border-slate-200 rounded-2xl px-5 py-4 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400 outline-none transition-all placeholder:text-slate-300 font-medium;
+}
+
+/* Animations */
+@keyframes gradient-x {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-gradient-x {
+  background-size: 200% 200%;
+  animation: gradient-x 3s ease infinite;
+}
+
+@keyframes progress-glow {
+  0% {
+    width: 0%;
+    left: 0%;
+  }
+
+  50% {
+    width: 40%;
+    left: 30%;
+  }
+
+  100% {
+    width: 100%;
+    left: 100%;
+  }
+}
+
+.animate-progress-glow {
+  animation: progress-glow 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  background: linear-gradient(90deg, transparent, #3b82f6, transparent);
+  position: absolute;
+  height: 100%;
+  width: 100%;
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 8s linear infinite;
+}
+
+/* Responsive Overrides */
+@media (max-width: 640px) {
+  .card {
+    padding: 1.5rem;
+    border-radius: 24px;
+  }
+}

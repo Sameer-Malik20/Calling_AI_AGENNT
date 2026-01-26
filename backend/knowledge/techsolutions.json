@@ -1,0 +1,35 @@
+{
+  "company_name": "SusaLabs",
+  "product": "Enterprise AI Automation & Custom CRM Solutions",
+  "value_proposition": "We bridge the gap between complex code and business growth by deploying tailormade AI agents and intelligent workflows that save enterprise teams 20+ hours weekly.",
+  "usp": [
+    "Proprietary AI Integration: Native integration of LLMs for real-time business intelligence.",
+    "Bespoke CRM Architectures: We don't just 'install' - we build CRMs around your specific sales friction.",
+    "HealthTech Specialists: HIPAA-compliant AI solutions for medical research and patient data analysis.",
+    "Scalable Infrastructure: Solutions built on modern stacks that grow with your user base."
+  ],
+  "industries": [
+    "Biotech & Healthcare",
+    "FinTech",
+    "High-Growth Startups",
+    "E-commerce & Retail"
+  ],
+  "common_pain_points": [
+    "Manual data entry killing sales productivity",
+    "Inefficient lead follow-ups",
+    "High operational costs in customer support",
+    "Data silos preventing intelligent decision making"
+  ],
+  "pricing_model": "Customized ROI-based pricing. We offer a free 30-minute Architecture Audit to determine project scope.",
+  "objections": {
+    "satisfied_with_current_vendor": "I completely respect that. We actually find that 40% of our clients keep their current vendor for maintenance but use SusaLabs for 'innovation-heavy' AI projects that standard shops can't handle.",
+    "not_interested_in_AI": "I hear you. Most people see AI as a gimmick. We see it as a tool to cut 30% of your operational overhead. Even if you're not ready now, wouldn't it be worth seeing how your competitors are using it?",
+    "budget_constraints": "Our solutions are built to be self-funding. We target workflows where the automation saves more in salary/time than the monthly cost of the system itself.",
+    "send_me_an_email": "I'd love to, but I've found that a 5-minute chat is 10x more helpful than a 10-page PDF. Do you have your calendar handy for a quick look next Tuesday?"
+  },
+  "script": {
+    "greeting": "Hi, this is Amy from SusaLabs. Am I speaking I'll be brief—I'm calling because we've recently helped companies like yours automate their CRM workflows using AI.",
+    "purpose": "We specialize in building custom AI-powered software that specifically helps [Industry] firms reduce manual work. I was curious if you're currently looking at automation for the upcoming quarter?",
+    "closing": "Listen, I don't want to take up your whole day. Are you open to a quick 10-minute demo next Wednesday or Thursday to see how this could specifically impact your team's efficiency?"
+  }
+}
