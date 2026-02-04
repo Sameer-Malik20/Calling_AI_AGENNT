@@ -25,13 +25,10 @@ class LLMWrapper {
         }
     }
 
-    getGlobalTimezone(phoneNumber) {
+getGlobalTimezone(phoneNumber) {
         try {
-            // Agar number valid nahi hai, default IST
-            // Also handle test number "1001" explicitly or if it doesn't look like a full international number
-            if (!phoneNumber || !phoneNumber.startsWith('+') || phoneNumber.includes('1001') || phoneNumber.length < 8) {
-                return 'Asia/Kolkata';
-            }
+            // Agar number valid nahi hai ya + se shuru nahi hota, default IST
+            if (!phoneNumber || !phoneNumber.startsWith('+')) return 'Asia/Kolkata';
             
             const number = phoneUtil.parseAndKeepRawInput(phoneNumber);
             const countryCode = phoneUtil.getRegionCodeForNumber(number); // Example: 'US', 'IN', 'GB'
@@ -39,10 +36,6 @@ class LLMWrapper {
             
             return zones && zones.length > 0 ? zones[0] : 'Asia/Kolkata';
         } catch (e) {
-            // If checking for valid phone number fails (common in test/local env), fail silently to default
-            if (e.message && e.message.includes('did not seem to be a phone number')) {
-                return 'Asia/Kolkata';
-            }
             console.error("[TIMEZONE-ERROR]", e.message);
             return 'Asia/Kolkata'; // Fallback
         }
@@ -108,7 +101,7 @@ class LLMWrapper {
 
         try {
             const response = await axios.post(this.endpoint, {
-                model: "deepseek-v3.1:671b-cloud",
+                model: "qwen3-coder:480b-cloud",
                 messages: [{ role: "user", content: insightPrompt }],
                 temperature: 0.3,
                 max_tokens: 200
@@ -172,77 +165,15 @@ class LLMWrapper {
 
         Transcript: ${JSON.stringify(history)}`;
 
-        return await this.generateResponse(prompt, null, []);
-    }
-
-    async generateFollowUpSummary(previousDiscussion, appointmentDate) {
-        if (!previousDiscussion || previousDiscussion === 'No previous discussion available') {
-            return "No previous discussion available. Starting fresh conversation.";
-        }
-        
-        const prompt = `Generate a concise summary of the previous discussion for a follow-up call.
-        Include key points discussed and the date of the previous conversation.
-        
-        Previous discussion: ${previousDiscussion}
-        Previous appointment date: ${appointmentDate}
-        
-        Format the summary as a natural conversation starter that references the previous discussion.`;
-
-        try {
-            const response = await axios.post(this.endpoint, {
-                model: "deepseek-v3.1:671b-cloud",
-                messages: [{ role: "user", content: prompt }],
-                temperature: 0.3,
-                max_tokens: 150
-            });
-
-            return response.data.choices[0].message.content;
-        } catch (error) {
-            console.error("Follow-up summary generation error:", error.message);
-            return `Previous discussion summary: ${previousDiscussion.substring(0, 200)}...`;
-        }
-    }
-
-    async generateFollowUpGreeting(previousDiscussion, appointmentDate, leadName) {
-        const prompt = `Generate a professional follow-up greeting in English.
-        
-        Requirements:
-        1. Start with "I am calling from SusaLabs,"
-        2. Mention why you're calling: "You asked us to call you at this time earlier. Can we talk now?" (Translate this naturally into professional English)
-        3. Reference the date of the last discussion to provide context. Use the date provided below EXACTLY (do not change it).
-        4. Keep it concise and professional (under 30 words)
-        
-        Previous discussion: ${previousDiscussion}
-        Previous appointment date: ${appointmentDate} (STRICT: Mention this date in your greeting)
-        Lead name: ${leadName}
-        
-        Format as a natural greeting that sounds professional and friendly.`;
-
-        try {
-            const response = await axios.post(this.endpoint, {
-                model: "deepseek-v3.1:671b-cloud",
-                messages: [{ role: "user", content: prompt }],
-                temperature: 0.5,
-                max_tokens: 100
-            });
-
-            return response.data.choices[0].message.content;
-        } catch (error) {
-            console.error("Follow-up greeting generation error:", error.message);
-            return `I am calling from SusaLabs. Following up on our discussion on ${appointmentDate}. Would you like to schedule a meeting today?`;
-        }
+        return await this.generateResponse(prompt, null, []); 
     }
 
     async generateResponse(prompt, knowledgeBase, history = [], userNumber = '+91') {
         
         // 1. Timezone Intelligence Logic (Added)
         const tz = this.getGlobalTimezone(userNumber);
-        const nowIST = moment().tz('Asia/Kolkata');
-        const userNow = moment().tz(tz);
         const userLocalTime = moment().tz(tz).format('hh:mm A');
         const userDay = moment().tz(tz).format('dddd');
-        const userFullDate = userNow.format('YYYY-MM-DD');
-        const currentYear = nowIST.format('YYYY');
         const indiaTime = moment().tz('Asia/Kolkata').format('hh:mm A');
         
         // 2. Database se busy slots mangwayein with detailed info
@@ -257,12 +188,10 @@ class LLMWrapper {
         You are Sam, a professional American outbound agent from SusaLabs.
         Tone: Helpful, consultative, and relaxed. Avoid sounding like a scripted robot.
 
-      GLOBAL TIMEZONE CONTEXT (CRITICAL):
-    - TODAY'S FULL DATE: ${userFullDate} 
-    - CURRENT YEAR: ${currentYear}                   
-    - Current User Local Time: ${userLocalTime} (Zone: ${tz})
-    - Current User Day: ${userDay}
-    - Reference India Time: ${indiaTime} (IST)
+        GLOBAL TIMEZONE CONTEXT (CRITICAL):
+        - Current User Local Time: ${userLocalTime} (Zone: ${tz})
+        - Current User Day: ${userDay}
+        - Reference India Time: ${indiaTime} (IST)
 
         LIVE AVAILABILITY (IST):
         - Already Booked Slots: ${formattedBusyList || 'None'}
@@ -273,27 +202,13 @@ class LLMWrapper {
         3. If NO conflict, confirm the demo and output: [BOOK_DEMO: {"user_time": "...", "ist_time": "...", "timezone": "${tz}"}]
         
         SCHEDULING RULES:
-        - Every demo is exactly 15 minutes long.
         - Only offer demo slots Monday to Friday, between 9 AM - 9 PM IST.
-        - Already booked slots require a 15-minute buffer. If a user asks for a time that is within 15 minutes of an existing booking, offer the next available 15-minute interval (e.g., if 2:00 PM is booked, offer 2:15 PM).
         - You ALREADY know the user's local time (${userLocalTime}); do NOT ask for it.
         - If a demo is fixed, you must output this tag at the end: [BOOK_DEMO: {"user_time": "...", "ist_time": "...", "timezone": "${tz}"}]
         - CONVERSION RULE: If user suggests a time, internally convert it to IST. 
         - Example: User says "10 PM" (their time), you check the offset and see if that IST time is between 9 AM - 9 PM IST.
         - If the converted IST time is outside 9 AM - 9 PM IST, say: "I'd love to, but our engineers are only available between 9 AM and 9 PM India time. Could we do something earlier/later?"
         - FORMAT: When you output [BOOK_DEMO], always ensure "ist_time" is the calculated India time in ISO format.
-        - DEMO DURATION: Always mention that the demo will be a quick 15-minute call.
-
-        AUTO-CALLBACK RULES:
-        1. If the user says "call me later", "call me in 10 minutes", or specifies a time but doesn't want to book a "demo" yet, suggest a callback.
-        2. If they just say "call me later" without a time, you MUST ask "Sure, what time would work best for you?" or "When should I call you back?".
-        3. If they specify a time for a callback, output: [SCHEDULE_CALLBACK: {"time_str": "...", "delay_minutes": X, "is_absolute": boolean}]
-        4. "delay_minutes" MUST be the calculated number of minutes from NOW to the requested callback time. 
-           - If user says "10 mins", delay_minutes: 10.
-           - If current time is 2:00 PM and user says "call at 2:30 PM", delay_minutes: 30.
-        5. "is_absolute" should be true if they gave a specific time (like "at 4 PM"), and false for relative time ("later").
-        6. If you are not sure about the exact time, ASK for clarification instead of outputting the tag.
-        7. When you output [SCHEDULE_CALLBACK], also say "Sure, I'll call you back then." or similar.
         
         Learned Behaviors (Adaptive Rules):
         ${this.learnings.dynamic_rules.join('\n') || "None yet."}
@@ -316,7 +231,7 @@ class LLMWrapper {
         ${history.slice(-5).map(h => `${h.role}: ${h.content}`).join('\n')}
         `;
         try {
-            const modelName = "deepseek-v3.1:671b-cloud"; 
+            const modelName = "qwen3-coder:480b-cloud"; 
             
             const response = await axios.post(this.endpoint, {
                 model: modelName,
@@ -326,7 +241,7 @@ class LLMWrapper {
                     { role: "user", content: prompt }
                 ],
                 temperature: 0.5,
-                max_tokens: 150
+                max_tokens: 50
             });
 
             return response.data.choices[0].message.content;

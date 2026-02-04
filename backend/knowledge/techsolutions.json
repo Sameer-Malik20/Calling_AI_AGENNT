@@ -1,35 +1,71 @@
 {
-  "company_name": "SusaLabs",
-  "product": "Enterprise AI Automation & Custom CRM Solutions",
-  "value_proposition": "We bridge the gap between complex code and business growth by deploying tailormade AI agents and intelligent workflows that save enterprise teams 20+ hours weekly.",
-  "usp": [
-    "Proprietary AI Integration: Native integration of LLMs for real-time business intelligence.",
-    "Bespoke CRM Architectures: We don't just 'install' - we build CRMs around your specific sales friction.",
-    "HealthTech Specialists: HIPAA-compliant AI solutions for medical research and patient data analysis.",
-    "Scalable Infrastructure: Solutions built on modern stacks that grow with your user base."
-  ],
-  "industries": [
-    "Biotech & Healthcare",
-    "FinTech",
-    "High-Growth Startups",
-    "E-commerce & Retail"
-  ],
-  "common_pain_points": [
-    "Manual data entry killing sales productivity",
-    "Inefficient lead follow-ups",
-    "High operational costs in customer support",
-    "Data silos preventing intelligent decision making"
-  ],
-  "pricing_model": "Customized ROI-based pricing. We offer a free 30-minute Architecture Audit to determine project scope.",
-  "objections": {
-    "satisfied_with_current_vendor": "I completely respect that. We actually find that 40% of our clients keep their current vendor for maintenance but use SusaLabs for 'innovation-heavy' AI projects that standard shops can't handle.",
-    "not_interested_in_AI": "I hear you. Most people see AI as a gimmick. We see it as a tool to cut 30% of your operational overhead. Even if you're not ready now, wouldn't it be worth seeing how your competitors are using it?",
-    "budget_constraints": "Our solutions are built to be self-funding. We target workflows where the automation saves more in salary/time than the monthly cost of the system itself.",
-    "send_me_an_email": "I'd love to, but I've found that a 5-minute chat is 10x more helpful than a 10-page PDF. Do you have your calendar handy for a quick look next Tuesday?"
+  "company_profile": {
+    "name": "SusaLabs",
+    "status": "Global Innovation & AI Engineering Partner",
+    "vision": "Bridging the gap between code and care by engineering future-ready AI ecosystems.",
+    "global_presence": {
+      "usa_hq": "625 Union Hill Rd, Alpharetta, GA 30004",
+      "india_hq": "DLF Corporate Greens, Sector 74A, Gurugram, Haryana",
+      "dubai_office": "Standard Chartered Tower, Level 5, Emaar Square, Downtown Dubai, UAE",
+      "additional_india": "Magnum Tower 1, 8th Floor, Golf Course Ext Rd, Sector 58, Gurugram"
+    },
+    "direct_contacts": {
+      "email": "contact@susalabs.com",
+      "phone_us": "+1 (478) 888-4458",
+      "phone_india": "+91 8595591496",
+      "phone_dubai": "+97 1556390061"
+    }
   },
-  "script": {
-    "greeting": "Hi, this is Amy from SusaLabs. Am I speaking I'll be brief—I'm calling because we've recently helped companies like yours automate their CRM workflows using AI.",
-    "purpose": "We specialize in building custom AI-powered software that specifically helps [Industry] firms reduce manual work. I was curious if you're currently looking at automation for the upcoming quarter?",
-    "closing": "Listen, I don't want to take up your whole day. Are you open to a quick 10-minute demo next Wednesday or Thursday to see how this could specifically impact your team's efficiency?"
-  }
+  "leadership_authority": [
+    {
+      "name": "Sunil Mudgal (CTO)",
+      "expertise": "15+ Years in Technical Architecture & Investment Strategy."
+    },
+    {
+      "name": "Gautam Gianchandi (CEO)",
+      "expertise": "33+ Years in International Expansion & European Markets."
+    }
+  ],
+  "core_offerings_and_usps": {
+    "ai_automation": "Custom AI agents that save enterprise teams 20+ hours weekly.",
+    "biotech_healthtech": "Specialized in mRNA cancer treatment platforms and HIPAA-compliant diagnostics.",
+    "sports_tech": "Proprietary motion detection technology with sub-millimeter precision for elite performance.",
+    "enterprise_software": "AI-powered CRM architectures that automate lead follow-ups and cut overhead by 30%."
+  },
+  "social_proof": {
+    "distinguished_clients": [
+      "Indian Army",
+      "US Congress Library",
+      "Google",
+      "TRAI",
+      "Nepal Telecom"
+    ],
+    "strategic_partners": [
+      "ITI (Government)",
+      "REIL (Energy)",
+      "Railtel (Telecom)"
+    ]
+  },
+  "conversational_intelligence": {
+    "boring_free_greeting": "I'm calling from SusaLabs. I’ll be brief—we’ve recently helped firms in [Industry] eliminate 20+ hours of manual work every week using custom AI agents. I wanted to see if reducing your team's operational overhead is a priority for this quarter?",
+    "pricing_convincer": {
+      "strategy": "Value-Based ROI Pricing.",
+      "response": "We don't offer 'off-the-shelf' prices because we don't build generic tools. Our pricing is ROI-based; if our system saves you more in manual labor costs than the system itself costs, it's essentially self-funding. We determine the exact value through a free 30-minute Architecture Audit."
+    },
+    "trust_builder": "We are trusted by the Indian Army and the US Congress Library for high-security projects. We bring that same level of precision and HIPAA-compliance to your business.",
+    "the_hook": "We are one of the few labs globally working on mRNA research modeling and sub-millimeter motion detection. We aren't just developers; we are architects of the future."
+  },
+  "top_10_call_scenarios": {
+    "q1_what_do_you_do": "We build intelligent ecosystems—from AI-powered CRMs to medical research platforms—that help businesses scale without adding more headcount.",
+    "q2_where_are_you": "We are a global firm with offices in the USA, India, and Dubai, providing 24/7 innovation support.",
+    "q3_why_custom_over_gpt": "Generic AI doesn't know your business logic. We build 'Native LLM integrations' that sit inside your existing systems like Salesforce or HubSpot.",
+    "q4_healthcare_experience": "We specialize in HIPAA-compliant tools for early diagnosis and RNA-based cancer solutions.",
+    "q5_logistics_efficiency": "We provide AI-powered route planning and IoT-enabled predictive maintenance for smart factories.",
+    "q6_legacy_systems": "We specialize in 'Cloud-native transformation'—modernizing your old, slow infrastructure without losing data.",
+    "q7_security_standards": "Data privacy is our foundation. We use DevSecOps and offer both Cloud and On-premise deployments.",
+    "q8_insurance_claims": "We use Blockchain to reduce claim settlement time by up to 70%.",
+    "q9_marketing_impact": "Our AI-driven digital strategies have shown up to 200% traffic increase for our partners.",
+    "q10_education_sector": "We build ERPs that track student performance using deep data analytics."
+  },
+  "closing_cta": "I’d love to schedule a quick 15-minute demo or a 30-minute Architecture Audit. When would be a good time for you during the week?"
 }

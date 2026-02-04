@@ -1,0 +1,439 @@
+const esl = require('modesl');
+const WhisperWrapper = require('../ai/whisper_wrapper');
+const PiperWrapper = require('../ai/piper_wrapper');
+const LLMWrapper = require('../ai/llm_wrapper');
+const path = require('path');
+const fs = require('fs');
+const kb = require('../knowledge/techsolutions.json');
+const CallMonitor = require('../utils/call_monitor');
+const { campaignManager, PhoneNumber } = require('../campaign/manager'); // ADDED
+const spacePath = path.join(__dirname, '../space').replace(/\\/g, '/');
+const { sendDemoConfirmationEmail, sendTeamNotificationEmail } = require('../utils/email_templates');
+
+class FreeSWITCHHandler {
+    constructor() {
+        this.whisper = new WhisperWrapper();
+        this.piper = new PiperWrapper();
+        this.llm = new LLMWrapper();
+        this.activeCalls = new Map();
+
+        // SIP Provider Config (Easily switch to Telnyx later)
+        // [TELNYX_UPDATE]: Jab Telnyx use karoge, to .env me DIAL_PROVIDER=telnyx set karna
+        this.provider = {
+            name: process.env.DIAL_PROVIDER || 'local', 
+            sender: process.env.SENDER_ID || '9876543210', // [TELNYX_UPDATE]: Yahan Telnyx se liya hua number dalna hoga
+            domain: process.env.SIP_DOMAIN || '100.87.88.37' // [TELNYX_UPDATE]: Telnyx provider ka SIP domain (e.g., sip.telnyx.com)
+        };
+
+        this.conn = new esl.Connection(
+            process.env.FS_HOST || '127.0.0.1',
+            8021,
+            process.env.FS_PASSWORD || 'ClueCon',
+            () => {
+                console.log('[DEBUG] FreeSWITCH Connection Established');
+                this.conn.subscribe(['CHANNEL_ANSWER', 'CHANNEL_HANGUP_COMPLETE', 'PLAYBACK_STOP']);
+                setInterval(() => this.cleanupOldRecordings(), 60 * 60 * 1000); 
+                this.cleanupOldRecordings();
+            }
+        );
+
+        // Watchdog for stuck calls
+        setInterval(() => {
+            for (let [id, data] of this.activeCalls) {
+                if (data.startTime && (Date.now() - data.startTime > 30 * 60 * 1000)) {
+                    console.log(`[WATCHDOG] Force hanging up stuck call: ${id}`);
+                    this.conn.execute('hangup', 'ALLOTTED_TIMEOUT', id);
+                    this.activeCalls.delete(id);
+                }
+            }
+        }, 5 * 60 * 1000);
+
+        this.conn.on('esl::event::CHANNEL_ANSWER::*', (ev) => this.handleCallStart(ev));
+        this.conn.on('esl::event::CHANNEL_PARK::*', (ev) => this.handleCallStart(ev));
+        
+        this.conn.on('esl::event::CHANNEL_HANGUP_COMPLETE::*', async (ev) => {
+    const id = ev.getHeader('Unique-ID');
+    const callData = this.activeCalls.get(id);
+
+    if (callData && callData.history.length > 0) {
+        // Poori conversation ko transcript mein convert karein
+        const fullTranscript = callData.history.map(h => `${h.role}: ${h.content}`).join('\n');
+
+        // Check if [BOOK_DEMO] tag exists in the last assistant message
+        const lastAIDesign = callData.history.reverse().find(h => h.role === 'assistant' && h.content.includes('[BOOK_DEMO'));
+        
+        if (lastAIDesign) {
+            try {
+                const bookingMatch = lastAIDesign.content.match(/\[BOOK_DEMO: (.*?)\]/);
+                if (bookingMatch) {
+                    const bookingData = JSON.parse(bookingMatch[1]);
+                    const leadInfo = await campaignManager.getLeadEmail(callData.numberId);
+                    
+                    // Save CallLog first
+                    const callLog = await campaignManager.saveCallLog(callData.numberId, {
+                        call_id: id,
+                        transcript: fullTranscript,
+                        outcome: 'DEMO_BOOKED',
+                        appointment: {
+                            user_time: bookingData.user_time,
+                            ist_time: new Date(bookingData.ist_time),
+                            email: leadInfo.email
+                        }
+                    });
+
+                    // Create dedicated Appointment record
+                    await campaignManager.createAppointment({
+                        leadId: callData.numberId,
+                        callLogId: callLog._id,
+                        userTime: bookingData.user_time,
+                        istTime: new Date(bookingData.ist_time),
+                        timezone: bookingData.timezone || 'Asia/Kolkata',
+                        email: leadInfo.email,
+                        status: 'SCHEDULED',
+                        notes: `Auto-booked via AI call on ${new Date().toLocaleString()}`
+                    });
+
+                    // Send professional confirmation email with calendar invite
+                    await sendDemoConfirmationEmail(
+                        leadInfo.email, 
+                        leadInfo.name, 
+                        bookingData.user_time,
+                        bookingData.ist_time,
+                        bookingData.timezone || 'Asia/Kolkata'
+                    );
+
+                    // Notify team about new booking
+                    await sendTeamNotificationEmail({
+                        leadName: leadInfo.name,
+                        email: leadInfo.email,
+                        phone: (await PhoneNumber.findById(callData.numberId))?.number || 'N/A',
+                        userTime: bookingData.user_time,
+                        istTime: bookingData.ist_time,
+                        timezone: bookingData.timezone || 'Asia/Kolkata'
+                    });
+                    
+                    console.log(`[DEMO-BOOKED] Appointment created for ${leadInfo.name} at ${bookingData.user_time}`);
+                }
+            } catch (err) {
+                console.error("[DEMO-BOOKING-ERROR]", err);
+            }
+        }
+                
+                try {
+                    // Fetch lead details for better reporting
+                    let leadInfo = { name: 'N/A', number: 'N/A' };
+                    if (callData.numberId) {
+                        try {
+                            const lead = await PhoneNumber.findById(callData.numberId);
+                            if (lead) {
+                                leadInfo.name = lead.name;
+                                leadInfo.number = lead.number;
+                            }
+                        } catch (dbErr) {
+                            console.error("[REPORT-DB-FETCH-ERROR]", dbErr);
+                        }
+                    }
+
+                    const report = await this.llm.generateCallReport(callData.history);
+                    
+                    // Trigger Self-Learning Loop
+                    await this.llm.learnFromCall(callData.history);
+                    
+                    const reportContent = `
+=========================================
+      PRODUCTION CALL ANALYTICS
+=========================================
+REPORT ID   : ${id}
+CUSTOMER    : ${leadInfo.name}
+NUMBER      : ${leadInfo.number}
+TIMESTAMP   : ${new Date().toLocaleString()}
+-----------------------------------------
+${report}
+=========================================`;
+
+                    console.log(reportContent);
+                    fs.appendFileSync('call_reports.log', reportContent + '\n');
+
+                    // Log to MongoDB if it's a campaign call
+                    if (callData.numberId) {
+                        const transcript = callData.history.map(h => `${h.role}: ${h.content}`).join('\n');
+                        await campaignManager.saveCallLog(callData.numberId, {
+                            transcript,
+                            summary: report,
+                            duration: (Date.now() - callData.startTime) / 1000,
+                            outcome: 'COMPLETED'
+                        });
+                    }
+                    
+                } catch (err) {
+                    console.error("[REPORT-ERROR]", err);
+                }
+            }
+            
+            this.activeCalls.delete(id);
+        });
+    }
+    
+    cleanupOldRecordings() {
+        const tempDir = process.env.TEMP_DIR;
+        const now = Date.now();
+        const oneHourAgo = now - (60 * 60 * 1000);
+
+        if (!tempDir || !fs.existsSync(tempDir)) return;
+
+        fs.readdir(tempDir, (err, files) => {
+            if (err) return;
+            
+            files.forEach(file => {
+                if (file.endsWith('.wav') && (file.startsWith('rec_') || file.startsWith('tts_'))) {
+                    const filePath = path.join(tempDir, file);
+                    fs.stat(filePath, (err, stats) => {
+                        if (!err && stats.mtimeMs < oneHourAgo) {
+                            fs.unlink(filePath, () => {});
+                        }
+                    });
+                }
+            });
+        });
+    }
+
+    handleCallStart(event) {
+        const id = event.getHeader('Unique-ID');
+        if (this.activeCalls.has(id)) return;
+
+        // Custom Header se lead information nikaalein
+        const numberId = event.getHeader('variable_lead_number_id');
+        const campaignId = event.getHeader('variable_campaign_id');
+        const kbFile = event.getHeader('variable_kb_file');
+        const leadName = event.getHeader('variable_lead_name')?.replace(/_/g, ' ');
+        
+        let callKb = kb; // Fallback to default
+        if (kbFile) {
+            try {
+                const kbPath = path.join(__dirname, '../knowledge', kbFile);
+                if (fs.existsSync(kbPath)) {
+                    callKb = JSON.parse(fs.readFileSync(kbPath, 'utf8'));
+                    console.log(`[SYSTEM] Loaded Dynamic KB: ${kbFile}`);
+                }
+            } catch (err) {
+                console.error(`[KB-LOAD-ERROR] Failed to load ${kbFile}:`, err);
+            }
+        }
+
+        this.activeCalls.set(id, { 
+            history: [], 
+            startTime: Date.now(),
+            numberId: numberId,
+            campaignId: campaignId,
+            customerName: leadName,
+            kb: callKb
+        });
+
+        console.log(`\n[SYSTEM] New Call Detected: ${id} (LeadID: ${numberId || 'N/A'}, Campaign: ${campaignId || 'N/A'})`);
+        this.conn.execute('park', '', id);
+        this.onAnswer(id);
+    }
+
+    async onAnswer(channelId) {
+        const callData = this.activeCalls.get(channelId);
+        const nameGreeting = callData?.customerName ? `Hi ${callData.customerName}, ` : "";
+        const configGreeting = callData?.kb?.conversational_intelligence?.boring_free_greeting || kb.conversational_intelligence.boring_free_greeting;
+        await this.speak(channelId, nameGreeting + configGreeting);
+    }
+
+    async initiateCall(number, numberId = null) {
+        console.log(`[CAMPAIGN] Preparing call to: ${number}`);
+        
+        let campaignId = '';
+        let kbFile = '';
+        let leadName = '';
+        
+        try {
+            if (numberId) {
+                const lead = await PhoneNumber.findById(numberId).populate('campaignId');
+                if (lead) {
+                    leadName = lead.name || '';
+                    if (lead.campaignId) {
+                        campaignId = lead.campaignId._id.toString();
+                        kbFile = lead.campaignId.knowledgeFile || '';
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("[CAMPAIGN-DB-ERROR]", e);
+        }
+
+        let dialString;
+        
+        /**
+         * 🚨 TELNYX / REAL SIP INTEGRATION GUIDE 🚨
+         * ------------------------------------------
+         * If you have a Telnyx account or a professional SIP provider:
+         * 
+         * 1. Go to your .env file and set DIAL_PROVIDER=telnyx (or any key)
+         * 2. Configure your Sofia Gateway in FreeSWITCH (conf/sip_profiles/external/telnyx.xml)
+         * 3. Use the 'telnyx' block below to route calls through that gateway.
+         * 
+         * For generic providers (e.g. Twilio BYOC, Vonage), use:
+         * dialString = `sofia/gateway/my_provider_name/${number}`;
+         */
+        if (this.provider.name === 'telnyx') {
+            // [TELNYX_UPDATE]: Telnyx calls route karne ke liye ye block use hoga
+            // Isse pehle FreeSWITCH me 'telnyx' gateway configure karna padega
+            dialString = `sofia/gateway/telnyx/${number}`;
+        } else {
+            // DEFAULT: Local testing with MicroSIP/Linphone
+            // [TELNYX_UPDATE]: Abhi ye use ho raha hai local calls ke liye
+            dialString = `user/${number}@${this.provider.domain}`; 
+        }
+
+        // Headers array - empty values wale variables skip karein taaki FS crash na ho
+        const varsArr = [
+            `origination_caller_id_number=${this.provider.sender}`,
+            `hangup_after_bridge=true`
+        ];
+        
+        if (numberId) varsArr.push(`lead_number_id=${numberId}`);
+        if (leadName) varsArr.push(`lead_name=${leadName.replace(/\s+/g, '_')}`);
+        if (campaignId) varsArr.push(`campaign_id=${campaignId.toString()}`);
+        if (kbFile) varsArr.push(`kb_file=${kbFile}`);
+
+        const vars = varsArr.join(',');
+
+        // ZAROORI: {} block aur dialstring ke beech bilkul space nahi hona chahiye
+        const command = `originate {${vars}}${dialString} &transfer(1000 XML default)`;
+        console.log(`[FS-EXECUTE] ${command}`);
+        
+        return new Promise((resolve, reject) => {
+            if (!this.conn || !this.conn.connected()) {
+                console.error("[FS-ERROR] Connection not ready");
+                return reject("Connection lost");
+            }
+            this.conn.api(command, (res) => {
+                const body = res.getBody();
+                console.log(`[FS-RESPONSE] ${body}`);
+                resolve(body);
+            });
+        });
+    }
+
+    async speak(channelId, text) {
+        if (!this.activeCalls.has(channelId)) return;
+// --- GAP 3: Piper file likh raha hai (TTS Generation) ---
+    // Jab tak .wav file banti hai, tab tak typing sound bajne do
+    this.conn.execute('playback', `${spacePath}/keyboard_typing.wav`, channelId);
+    console.log("[TTS] Synthesizing... Playing: keyboard_typing.wav");
+        const fileName = `tts_${Date.now()}.wav`;
+        // Windows path fix for FreeSWITCH (Replace \ with /)
+        let outputPath = path.join(process.env.TEMP_DIR, fileName).replace(/\\/g, '/');
+
+        try {
+            console.log(`[TTS] Synthesizing...`);
+            await this.piper.synthesize(text, outputPath);
+            
+            console.log(`[FS] Executing Playback...`);
+            this.conn.execute('playback', outputPath, channelId);
+
+            const onStop = (event) => {
+                if (event.getHeader('Unique-ID') === channelId && event.getHeader('Event-Name') === 'PLAYBACK_STOP') {
+                    this.conn.removeListener('esl::event::PLAYBACK_STOP::*', onStop);
+                    console.log("[FS] Playback Stopped. Switching to Record.");
+                    // Record se pehle chota delay taaki FS ready rahe
+                    setTimeout(() => this.listenLoop(channelId), 500);
+                }
+            };
+            this.conn.on('esl::event::PLAYBACK_STOP::*', onStop);
+        } catch (err) {
+            console.error(`[TTS-ERROR] ${err.message}`);
+        }
+    }
+
+
+
+// freeswitch_handler.js (Sirf listenLoop wala part update karein)
+ // Path check karlein
+
+async listenLoop(channelId) {
+    if (!this.activeCalls.has(channelId)) {
+        console.log(`[STOP] Call ${channelId} has ended. Killing AI process.`);
+        return; // Loop yahi ruk jayega aur minutes nahi badhenge
+    }
+
+    if (!this.activeCalls.has(channelId)) return;
+
+    // 1. Monitor ko define karein taaki logs crash na ho
+    const monitor = new CallMonitor(channelId);
+    const recFileName = `rec_${Date.now()}.wav`;
+    const recPath = path.join(process.env.TEMP_DIR, recFileName).replace(/\\/g, '/');
+
+    monitor.log("Starting Background Recording...");
+    
+    // Step 1: Recording shuru karein
+    this.conn.execute('record_session', recPath, channelId);
+
+    // Step 2: wait_for_silence (Threshold: 200, Silence-time: 15 samples, Gap: 10, Timeout: 5000ms)
+    // Mobile aur Laptop dono ke liye ye settings stable hain
+    this.conn.execute('wait_for_silence', '200 80 10 20000', channelId, async () => {
+        
+        // Step 3: Recording rokein taaki file save ho jaye
+        this.conn.execute('stop_record_session', recPath, channelId);
+        // --- GAP 1: User chup hua, Whisper shuru hone wala hai ---
+        // Turant acknowledgment de do
+        this.conn.execute('playback', `${spacePath}/uh_huh.wav`, channelId);
+        monitor.log("Silence Detected. Playing: uh_huh.wav");
+        monitor.log("Silence Detected by wait_for_silence.");
+
+        if (!this.activeCalls.has(channelId)) return;
+
+        // File check logic (Wait for 100ms for disk write)
+        setTimeout(async () => {
+            if (fs.existsSync(recPath)) {
+                try {
+                    monitor.log("Sending audio to Whisper...");
+                    const sttStart = Date.now();
+                    
+                    // SIRF EK BAAR transcribe call karein
+                    const transcript = await this.whisper.transcribe(recPath);
+                    monitor.log(`Whisper Done. Text: "${transcript}"`);
+
+                    if (transcript && transcript.trim().length > 1) {
+                        // --- GAP 2: Whisper khatam, LLM (Qwen) sochna shuru karega ---
+                        // "Hmm, let me see" bajao taaki thinking gap cover ho jaye
+                        this.conn.execute('playback', `${spacePath}/let_me_see.wav`, channelId);
+                        monitor.log("Calling LLM... Playing: let_me_see.wav");
+                        monitor.log("Calling LLM...");
+                        
+                        const callData = this.activeCalls.get(channelId);
+                        const currentKb = callData.kb || kb;
+
+                        // 1. User ki baat history mein daalein
+                        callData.history.push({ role: 'user', content: transcript });
+                        const response = await this.llm.generateResponse(transcript, currentKb, callData.history);
+                        // 2. AI ka jawab history mein daalein
+                        callData.history.push({ role: 'assistant', content: response });
+                        await this.speak(channelId, response);
+                    } else {
+                        // Yahan check karein ki call zinda hai ya nahi
+                        if (!this.activeCalls.has(channelId)) {
+                            console.log("[STOP] Call ended, breaking empty transcript loop.");
+                            return; // Loop ko yahin khatam kar dein
+                        }   
+                        
+                        monitor.log("Empty transcript. Restarting loop.");
+                        this.listenLoop(channelId);
+                    }
+                } catch (err) {
+                    console.error(`[ERROR]: ${err}`);
+                    this.listenLoop(channelId);
+                }
+            } else {
+                monitor.log("ERROR: File not found on disk!");
+                this.listenLoop(channelId);
+            }
+            monitor.getSummary();
+        }, 100); 
+    });
+}
+}
+
+module.exports = FreeSWITCHHandler;

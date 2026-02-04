@@ -10,34 +10,66 @@ import { API_BASE_URL } from '../config/api';
 
 const Dashboard = ({ viewMode }) => {
     const [stats, setStats] = useState({ total: 0, completed: 0, failed: 0, pending: 0 });
+    const [campaigns, setCampaigns] = useState([]);
+    const [selectedCampaignId, setSelectedCampaignId] = useState('latest');
+    const [latestCampaign, setLatestCampaign] = useState(null);
     const [liveCalls, setLiveCalls] = useState([]);
     const [historyLogs, setHistoryLogs] = useState([]);
     const [isTestModalOpen, setIsTestModalOpen] = useState(false);
     const [testNumber, setTestNumber] = useState('');
     const [isConnecting, setIsConnecting] = useState(false);
+    const [isStarting, setIsStarting] = useState(false);
+
+    useEffect(() => {
+        const fetchCampaigns = async () => {
+            try {
+                const res = await axios.get(`${API_BASE_URL}/api/campaigns`);
+                setCampaigns(res.data);
+            } catch (err) {}
+        };
+        fetchCampaigns();
+    }, []);
 
     useEffect(() => {
         const fetchStats = async () => {
             try {
-                const res = await axios.get(`${API_BASE_URL}/api/campaigns/1/stats`);
+                const res = await axios.get(`${API_BASE_URL}/api/campaigns/${selectedCampaignId}/stats`);
                 setStats(res.data);
+                if (res.data.name) setLatestCampaign(res.data.name);
                 
-                if (viewMode === 'history') {
-                    setHistoryLogs([
-                        { id: 1, number: '+1 (555) 123-4567', status: 'Success', duration: '4m 12s', sentiment: 'Positive', date: '2026-01-21 15:30', outcome: 'Demo Booked', agent: 'Amy v3' },
-                        { id: 2, number: '+1 (555) 987-6543', status: 'Failed', duration: '0m 15s', sentiment: 'N/A', date: '2026-01-21 15:25', outcome: 'Wrong Person', agent: 'Sam 3.1' },
-                        { id: 3, number: '+1 (555) 456-7890', status: 'Success', duration: '2m 45s', sentiment: 'Neutral', date: '2026-01-21 15:10', outcome: 'Callback Info', agent: 'Amy v3' },
-                        { id: 4, number: '+1 (555) 222-3333', status: 'Success', duration: '5m 50s', sentiment: 'Positive', date: '2026-01-21 14:50', outcome: 'Meeting Set', agent: 'Sam 3.1' },
-                        { id: 5, number: '+1 (555) 888-9999', status: 'Success', duration: '1m 20s', sentiment: 'Neutral', date: '2026-01-21 14:30', outcome: 'Interested', agent: 'Sam 3.1' },
-                    ]);
-                }
-            } catch (err) { console.error("Stats Error:", err); }
+                // Fetch real logs with populated lead info
+                const logsRes = await axios.get(`${API_BASE_URL}/api/logs${selectedCampaignId !== 'latest' ? `?campaignId=${selectedCampaignId}` : ''}`);
+                const formattedLogs = logsRes.data.map(log => ({
+                    id: log._id,
+                    number: log.numberId?.number || 'Unknown',
+                    name: log.numberId?.name || 'Unknown',
+                    status: log.outcome === 'COMPLETED' ? 'Success' : 'Failed',
+                    duration: Math.round(log.duration) + 's',
+                    sentiment: 'Neutral',
+                    date: new Date(log.createdAt).toLocaleString(),
+                    outcome: log.outcome,
+                    agent: 'Sam 3.1'
+                }));
+                setHistoryLogs(formattedLogs);
+            } catch (err) {}
         };
         
         fetchStats();
         const interval = setInterval(fetchStats, 5000);
         return () => clearInterval(interval);
-    }, [viewMode]);
+    }, [viewMode, selectedCampaignId]);
+
+    const handleStartCampaign = async () => {
+        setIsStarting(true);
+        try {
+            const res = await axios.post(`${API_BASE_URL}/api/campaigns/${selectedCampaignId}/start`);
+            alert(res.data.message || "Campaign started successfully!");
+        } catch (err) {
+            alert("Error: " + (err.response?.data?.error || err.message));
+        } finally {
+            setIsStarting(false);
+        }
+    };
 
     const handleTestCall = async () => {
         if (!testNumber.trim()) return alert('Please enter a valid phone number');
@@ -71,10 +103,28 @@ const Dashboard = ({ viewMode }) => {
                     </h1>
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex flex-col md:flex-row md:items-center gap-4">
+                    <select 
+                        value={selectedCampaignId}
+                        onChange={(e) => setSelectedCampaignId(e.target.value)}
+                        className="bg-slate-50 border-2 border-slate-50 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-widest outline-none focus:border-blue-600 transition-all cursor-pointer"
+                    >
+                        <option value="latest">Latest Payload</option>
+                        {campaigns.map(c => (
+                            <option key={c._id} value={c._id}>{c.name}</option>
+                        ))}
+                    </select>
+
+                    <button 
+                        onClick={handleStartCampaign}
+                        disabled={isStarting}
+                        className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-100 disabled:opacity-50"
+                    >
+                        <Play size={14} fill="currentColor" /> {isStarting ? 'Starting...' : 'Start Campaign'}
+                    </button>
                     <button 
                         onClick={() => setIsTestModalOpen(true)}
-                        className="bg-black text-white px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center gap-2"
+                        className="bg-black text-white px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center gap-2"
                     >
                         <Zap size={14} fill="currentColor" /> Test Handshake
                     </button>
@@ -82,9 +132,15 @@ const Dashboard = ({ viewMode }) => {
             </div>
 
             {/* Stats Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-6">
                 <StatBox label="Total Calls" value={stats.total} icon={<Users size={20} />} trend="+12%" color="blue" />
                 <StatBox label="Success" value={stats.completed} icon={<CheckCircle size={20} />} trend="84%" color="emerald" />
+                <StatBox 
+                    label="Time used" 
+                    value={!stats.duration || isNaN(stats.duration) ? '0s' : (stats.duration < 60 ? `${Math.round(stats.duration)}s` : `${(stats.duration / 60).toFixed(1)}m`)} 
+                    icon={<Clock size={20} />} 
+                    color="blue" 
+                />
                 <StatBox label="Drops" value={stats.failed} icon={<XCircle size={20} />} trend="2.1%" color="rose" />
                 <StatBox label="Waitlist" value={stats.pending} icon={<Clock size={20} />} trend="Active" color="amber" />
             </div>
@@ -104,46 +160,46 @@ const Dashboard = ({ viewMode }) => {
                             </div>
                         </div>
                         
-                        <div className="flex-1 overflow-x-auto p-2">
+                        <div className="flex-1 overflow-x-auto">
                             {viewMode === 'realtime' && liveCalls.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center p-20 text-center space-y-6">
-                                    <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center border border-slate-100">
-                                        <Globe className="text-slate-200" size={40} />
+                                <div className="h-full flex flex-col items-center justify-center py-20 px-8 text-center space-y-6">
+                                    <div className="w-20 h-20 sm:w-24 sm:h-24 bg-slate-50 rounded-full flex items-center justify-center border border-slate-100">
+                                        <Globe className="text-slate-200" size={32} />
                                     </div>
                                     <div className="space-y-2">
-                                        <p className="text-sm font-black text-slate-900 uppercase tracking-widest">Awaiting Handshake</p>
-                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest max-w-[200px] leading-relaxed">System is polling for incoming campaign payloads.</p>
+                                        <p className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-widest">Awaiting Handshake</p>
+                                        <p className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-widest max-w-[200px] mx-auto leading-relaxed">System is polling for incoming campaign payloads.</p>
                                     </div>
                                 </div>
                             ) : (
-                                <table className="w-full text-left">
+                                <table className="w-full text-left min-w-[600px]">
                                     <thead>
                                         <tr className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 border-b border-slate-50">
-                                            <th className="px-6 py-4">Identity</th>
-                                            <th className="px-6 py-4">Status</th>
-                                            <th className="px-6 py-4">Duration</th>
-                                            <th className="px-6 py-4 text-right">Timestamp</th>
+                                            <th className="px-4 sm:px-6 py-4">Identity</th>
+                                            <th className="px-4 sm:px-6 py-4">Status</th>
+                                            <th className="px-4 sm:px-6 py-4">Duration</th>
+                                            <th className="px-4 sm:px-6 py-4 text-right">Timestamp</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
                                         {historyLogs.map(log => (
                                             <tr key={log.id} className="group hover:bg-slate-50 transition-colors">
-                                                <td className="px-6 py-5 flex items-center gap-4">
-                                                    <div className="w-10 h-10 bg-white border border-slate-100 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform">
-                                                        <Smartphone size={16} className="text-slate-400" />
+                                                <td className="px-4 sm:px-6 py-5 flex items-center gap-3 sm:gap-4">
+                                                    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white border border-slate-100 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform">
+                                                        <Smartphone size={14} className="text-slate-400" />
                                                     </div>
                                                     <div>
-                                                        <p className="text-sm font-black text-slate-900 leading-none mb-1">{log.number}</p>
-                                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{log.outcome}</p>
+                                                        <p className="text-xs sm:text-sm font-black text-slate-900 leading-none mb-1">{log.number}</p>
+                                                        <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest">{log.name}</p>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-5">
-                                                    <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${log.status === 'Success' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-                                                        {log.status}
+                                                <td className="px-4 sm:px-6 py-5">
+                                                    <span className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg text-[8px] sm:text-[9px] font-black uppercase tracking-widest ${log.status === 'Success' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                                                        {log.outcome}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-5 text-xs font-bold text-slate-400">{log.duration}</td>
-                                                <td className="px-6 py-5 text-right text-[10px] font-black text-slate-300 tabular-nums uppercase">{log.date.split(' ')[1]}</td>
+                                                <td className="px-4 sm:px-6 py-5 text-[11px] sm:text-xs font-bold text-slate-400">{log.duration}</td>
+                                                <td className="px-4 sm:px-6 py-5 text-right text-[9px] sm:text-[10px] font-black text-slate-300 tabular-nums uppercase">{log.date}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -239,19 +295,21 @@ const Dashboard = ({ viewMode }) => {
 };
 
 const StatBox = ({ label, value, icon, trend, color }) => (
-    <div className="bg-white rounded-[32px] border border-slate-50 p-6 flex items-center justify-between shadow-sm hover:shadow-md transition-all group">
-        <div className="flex items-center gap-4">
-            <div className={`p-3 rounded-2xl bg-${color}-50 text-${color}-600 group-hover:scale-110 transition-transform`}>
-                {icon}
+    <div className="bg-white rounded-[24px] sm:rounded-[32px] border border-slate-100 p-4 sm:p-6 flex items-center justify-between shadow-sm hover:shadow-md transition-all group overflow-hidden">
+        <div className="flex items-center gap-2 sm:gap-4 overflow-hidden">
+            <div className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-${color}-50 text-${color}-600 group-hover:scale-110 transition-transform shrink-0`}>
+                {React.cloneElement(icon, { size: 16 })}
             </div>
-            <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{label}</p>
-                <p className="text-2xl font-black text-slate-900 tabular-nums">{value}</p>
+            <div className="min-w-0">
+                <p className="text-[8px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5 sm:mb-1 truncate">{label}</p>
+                <p className="text-lg sm:text-2xl font-black text-slate-900 tabular-nums truncate">{value}</p>
             </div>
         </div>
-        <div className={`text-[10px] font-black px-2 py-1 rounded-lg bg-${color}-50 text-${color}-600 uppercase`}>
-            {trend}
-        </div>
+        {trend && (
+            <div className={`text-[8px] sm:text-[10px] font-black px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-lg bg-${color}-50 text-${color}-600 uppercase shrink-0`}>
+                {trend}
+            </div>
+        )}
     </div>
 );
 

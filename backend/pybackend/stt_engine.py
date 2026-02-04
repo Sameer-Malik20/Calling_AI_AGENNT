@@ -28,7 +28,7 @@ async def handle_audio(websocket):
             await websocket.send("")
 
 async def main():
-    async with websockets.serve(handle_audio, "127.0.0.1", 8083):
+    async with websockets.serve(handle_audio, "127.0.0.1", 8083,max_size=None):
         await asyncio.Future()  # Run forever
 
 if __name__ == "__main__":
